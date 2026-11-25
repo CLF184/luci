@@ -10,7 +10,7 @@ permissions:
   actions: read
 
 env:
-  SDK_ARTIFACT_RUN: '45556433343'
+  SDK_ARTIFACT_RUN: ''
 
 jobs:
   sdk-and-install:
