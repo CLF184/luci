@@ -31,13 +31,15 @@ jobs:
           printf '%s  %s\n' 1864152619092e781fa36a401960c8e9ae42d6a364c44ee5f0b197ca5f3c0fcc "$sdk.tar.zst" | sha256sum -c -
           tar -xf "$sdk.tar.zst"
           cd "$sdk"
+          awk -v local_luci="$GITHUB_WORKSPACE" '$2 == "luci" { print "src-link luci " local_luci; next } {print}' feeds.conf.default > feeds.conf
+          grep -q '^src-link luci ' feeds.conf
           ./scripts/feeds update packages luci routing
-          cp -R "$GITHUB_WORKSPACE/applications/luci-app-bird" feeds/luci/applications/
-          ./scripts/feeds update -i luci
+          grep -q '^Package: luci-app-bird$' feeds/luci.index
           ./scripts/feeds install -p luci luci-app-bird
+          test -f package/feeds/luci/luci-app-bird/Makefile
           printf '%s\n' 'CONFIG_PACKAGE_luci-app-bird=m' >> .config
           make defconfig
-          make -j2 package/luci-app-bird/compile V=s
+          make -j2 package/feeds/luci/luci-app-bird/compile V=s
           pkg=$(find bin -type f -name 'luci-app-bird-*.apk' -print -quit)
           test -n "$pkg"
           mkdir -p "$RUNNER_TEMP/bird-artifacts"
