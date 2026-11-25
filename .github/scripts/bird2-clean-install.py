@@ -32,8 +32,9 @@ def main():
             guest.logfile_read = sys.stdout
             guest.expect("Please press Enter to activate this console")
             guest.sendline("")
-            guest.expect(r"root@OpenWrt:[^\r\n]*#")
+            guest.expect(r"root@[^:\r\n]+:[^\r\n]*#")
             run_guest(guest, "grep -q \"DISTRIB_ID='OpenWrt'\" /etc/openwrt_release && ! apk info -e luci-app-bird")
+            run_guest(guest, "for i in $(seq 1 30); do ubus call network.interface.lan status >/dev/null 2>&1 && exit_ready=yes && break; sleep 1; done; test \"$exit_ready\" = yes")
             run_guest(guest, "uci set network.lan.proto=dhcp && uci commit network && /etc/init.d/network restart")
             run_guest(guest, "for i in $(seq 1 30); do ip -4 route | grep -q '^default via 10.0.2.2' && break; sleep 1; done; "
                       "ip -4 route | grep -q '^default via 10.0.2.2'")

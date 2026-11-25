@@ -45,6 +45,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bird-artifacts"
           cp "$pkg" "$RUNNER_TEMP/bird-artifacts/"
           staging_dir/host/bin/apk adbdump "$pkg" | awk 'NR <= 35'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bird2-sdk-apk
+          path: ${{ runner.temp }}/bird-artifacts/*.apk
+          if-no-files-found: error
       - name: Boot official OpenWrt and test a clean APK installation
         shell: bash
         run: |
