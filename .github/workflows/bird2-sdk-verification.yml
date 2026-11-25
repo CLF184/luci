@@ -28,7 +28,7 @@ jobs:
           base=https://downloads.openwrt.org/releases/25.12.6/targets/x86/64
           cd "$RUNNER_TEMP"
           curl --fail --location --retry 3 --output "$sdk.tar.zst" "$base/$sdk.tar.zst"
-          printf '%s  %s\n' 1864152619092e781fa36a401960c8e9ae42d6a364c44ee5f3c0fcc "$sdk.tar.zst" | sha256sum -c -
+          printf '%s  %s\n' 1864152619092e781fa36a401960c8e9ae42d6a364c44ee5f0b197ca5f3c0fcc "$sdk.tar.zst" | sha256sum -c -
           tar -xf "$sdk.tar.zst"
           cd "$sdk"
           ./scripts/feeds update packages luci routing
