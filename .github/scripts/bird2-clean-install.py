@@ -54,9 +54,13 @@ def main():
             request = json.dumps({
                 "revision": "REVISION", "payload": json.dumps(settings, separators=(",", ":"))
             }, separators=(",", ":"))
-            run_guest(guest, "rev=$(ubus call luci.ospf status | jsonfilter -e '@.revision'); "
-                      f"req=$(printf %s {quote(request)} | sed \"s/REVISION/$rev/\"); "
-                      "test \"$(ubus call luci.ospf apply \"$req\" | jsonfilter -e '@.ok')\" = true")
+            fixture = package.parent / "bird-request.json"
+            fixture.write_text(request, encoding="utf-8")
+            run_guest(guest, f"wget -O /tmp/bird-request.json http://10.0.2.2:{port}/{fixture.name}")
+            run_guest(guest, "rev=$(ubus call luci.ospf status | jsonfilter -e '@.revision'); test -n \"$rev\"")
+            run_guest(guest, "req=$(sed \"s/REVISION/$rev/\" /tmp/bird-request.json); test -n \"$req\"")
+            run_guest(guest, "answer=$(ubus call luci.ospf apply \"$req\"); echo \"$answer\"; "
+                      "test \"$(printf %s \"$answer\" | jsonfilter -e '@.ok')\" = true")
             run_guest(guest, "test \"$(ubus call luci.ospf status | jsonfilter -e '@.mode')\" = managed && "
                       "bird -p -c /etc/bird.conf && birdc show protocols | grep -Eq '^lan_ospf[[:space:]].*up'")
             cmd = "ubus call session access " + quote(json.dumps({
