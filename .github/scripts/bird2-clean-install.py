@@ -11,7 +11,7 @@ import pexpect
 
 def run_guest(guest, command, timeout=60):
     guest.sendline(f"{command}; result=$?; printf '\\nBIRD_TEST_RESULT:%s\\n' \"$result\"")
-    guest.expect(r"BIRD_TEST_RESULT:(\d+)\r?\n", timeout=timeout)
+    guest.expect(r"BIRD_TEST_RESULT:(\d+)\r*\n", timeout=timeout)
     if guest.match.group(1) != "0":
         raise RuntimeError(f"OpenWrt command failed ({guest.match.group(1)}): {command}")
 
