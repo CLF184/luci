@@ -33,7 +33,7 @@ jobs:
           cd "$sdk"
           awk -v local_luci="$GITHUB_WORKSPACE" '$2 == "luci" { print "src-link luci " local_luci; next } {print}' feeds.conf.default > feeds.conf
           grep -q '^src-link luci ' feeds.conf
-          ./scripts/feeds update packages luci routing
+          ./scripts/feeds update base packages luci routing
           grep -q '^Package: luci-app-bird$' feeds/luci.index
           ./scripts/feeds install -p luci luci-app-bird
           test -f package/feeds/luci/luci-app-bird/Makefile
