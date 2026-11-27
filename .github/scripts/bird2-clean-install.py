@@ -16,6 +16,18 @@ def run_guest(guest, command, timeout=60):
         raise RuntimeError(f"OpenWrt command failed ({guest.match.group(1)}): {command}")
 
 
+def apply_settings(guest, port, fixture, settings):
+    request = json.dumps({
+        "revision": "REVISION", "payload": json.dumps(settings, separators=(",", ":"))
+    }, separators=(",", ":"))
+    fixture.write_text(request, encoding="utf-8")
+    run_guest(guest, f"wget -O /tmp/bird-request.json http://10.0.2.2:{port}/{fixture.name}")
+    run_guest(guest, "rev=$(ubus call luci.ospf status | jsonfilter -e '@.revision'); test -n \"$rev\"")
+    run_guest(guest, "req=$(sed \"s/REVISION/$rev/\" /tmp/bird-request.json); test -n \"$req\"")
+    run_guest(guest, "answer=$(ubus call luci.ospf apply \"$req\"); echo \"$answer\"; "
+              "test \"$(printf %s \"$answer\" | jsonfilter -e '@.ok')\" = true")
+
+
 def main():
     firmware, package, translation = (Path(arg).resolve() for arg in sys.argv[1:])
     handler = partial(SimpleHTTPRequestHandler, directory=str(package.parent))
@@ -56,16 +68,8 @@ def main():
                     "cost": 10, "priority": 1, "hello": 10, "dead": 40,
                 }],
             }
-            request = json.dumps({
-                "revision": "REVISION", "payload": json.dumps(settings, separators=(",", ":"))
-            }, separators=(",", ":"))
             fixture = package.parent / "bird-request.json"
-            fixture.write_text(request, encoding="utf-8")
-            run_guest(guest, f"wget -O /tmp/bird-request.json http://10.0.2.2:{port}/{fixture.name}")
-            run_guest(guest, "rev=$(ubus call luci.ospf status | jsonfilter -e '@.revision'); test -n \"$rev\"")
-            run_guest(guest, "req=$(sed \"s/REVISION/$rev/\" /tmp/bird-request.json); test -n \"$req\"")
-            run_guest(guest, "answer=$(ubus call luci.ospf apply \"$req\"); echo \"$answer\"; "
-                      "test \"$(printf %s \"$answer\" | jsonfilter -e '@.ok')\" = true")
+            apply_settings(guest, port, fixture, settings)
             run_guest(guest, "test \"$(ubus call luci.ospf status | jsonfilter -e '@.mode')\" = managed && "
                       "bird -p -c /etc/bird.conf && birdc show protocols | grep -Eq '^lan_ospf[[:space:]].*up'")
             cmd = "ubus call session access " + quote(json.dumps({
@@ -79,13 +83,7 @@ def main():
                 settings["router_id"] = router_id
                 if not running:
                     run_guest(guest, "/etc/init.d/bird stop && /etc/init.d/bird disable")
-                request = json.dumps({
-                    "revision": "REVISION", "payload": json.dumps(settings, separators=(",", ":"))
-                }, separators=(",", ":"))
-                run_guest(guest, "rev=$(ubus call luci.ospf status | jsonfilter -e '@.revision'); "
-                          f"req=$(printf %s {quote(request)} | sed \"s/REVISION/$rev/\"); "
-                          "answer=$(ubus call luci.ospf apply \"$req\"); "
-                          "test \"$(printf %s \"$answer\" | jsonfilter -e '@.ok')\" = true")
+                apply_settings(guest, port, fixture, settings)
                 run_guest(guest, "test \"$(ubus call luci.ospf status | jsonfilter -e '@.bird_running')\" = "
                           f"{str(running).lower()} && grep -Fq 'router id {router_id};' /etc/bird.conf")
                 if running:
