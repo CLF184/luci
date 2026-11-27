@@ -74,7 +74,28 @@ def main():
             run_guest(guest, f"test \"$({cmd} | jsonfilter -e '@.access')\" = false")
             run_guest(guest, "grep -m1 -q '^# luci-app-bird: v2 ' /etc/bird.conf")
             run_guest(guest, "test \"$(ubus call luci.ospf status | jsonfilter -e '@.bird_running')\" = true")
-            print("PASS: official OpenWrt clean install, LuCI endpoint, OSPF apply, and ACL")
+            settings["enabled"] = False
+            for running, router_id in [(True, "192.0.2.10"), (False, "192.0.2.11")]:
+                settings["router_id"] = router_id
+                if not running:
+                    run_guest(guest, "/etc/init.d/bird stop && /etc/init.d/bird disable")
+                request = json.dumps({
+                    "revision": "REVISION", "payload": json.dumps(settings, separators=(",", ":"))
+                }, separators=(",", ":"))
+                run_guest(guest, "rev=$(ubus call luci.ospf status | jsonfilter -e '@.revision'); "
+                          f"req=$(printf %s {quote(request)} | sed \"s/REVISION/$rev/\"); "
+                          "answer=$(ubus call luci.ospf apply \"$req\"); "
+                          "test \"$(printf %s \"$answer\" | jsonfilter -e '@.ok')\" = true")
+                run_guest(guest, "test \"$(ubus call luci.ospf status | jsonfilter -e '@.bird_running')\" = "
+                          f"{str(running).lower()} && grep -Fq 'router id {router_id};' /etc/bird.conf")
+                if running:
+                    run_guest(guest, "/etc/init.d/bird enabled && "
+                              "for i in $(seq 1 10); do "
+                              "if ! birdc show protocols | grep -Eq '^lan_ospf[[:space:]]'; then break; fi; "
+                              "sleep 1; done && ! birdc show protocols | grep -Eq '^lan_ospf[[:space:]]'")
+                else:
+                    run_guest(guest, "! /etc/init.d/bird running && ! /etc/init.d/bird enabled")
+            print("PASS: official OpenWrt clean install, LuCI endpoint, OSPF apply, ACL, and disabled service policy")
 
 
 if __name__ == "__main__":
