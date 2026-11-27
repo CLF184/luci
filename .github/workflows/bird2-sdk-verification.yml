@@ -1,0 +1,82 @@
+name: Bird 2 SDK and clean install
+
+on:
+  push:
+    branches:
+      - test-bird2-ospf-ui
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SDK_ARTIFACT_RUN: ''
+
+jobs:
+  sdk-and-install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare host tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-pexpect wget zstd qemu-system-x86
+          if [ -z "$SDK_ARTIFACT_RUN" ]; then
+            sudo apt-get install -y --no-install-recommends build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext libncurses-dev libssl-dev python3-setuptools python3-pyelftools rsync swig unzip zlib1g-dev file
+          fi
+      - name: Build with official OpenWrt 25.12.6 SDK
+        if: env.SDK_ARTIFACT_RUN == ''
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sdk=openwrt-sdk-25.12.6-x86-64_gcc-14.3.0_musl.Linux-x86_64
+          base=https://downloads.openwrt.org/releases/25.12.6/targets/x86/64
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 --output "$sdk.tar.zst" "$base/$sdk.tar.zst"
+          printf '%s  %s\n' 1864152619092e781fa36a401960c8e9ae42d6a364c44ee5f0b197ca5f3c0fcc "$sdk.tar.zst" | sha256sum -c -
+          tar -xf "$sdk.tar.zst"
+          cd "$sdk"
+          awk -v local_luci="$GITHUB_WORKSPACE" '$2 == "luci" { print "src-link luci " local_luci; next } {print}' feeds.conf.default > feeds.conf
+          grep -q '^src-link luci ' feeds.conf
+          ./scripts/feeds update base packages luci routing
+          grep -q '^Package: luci-app-bird$' feeds/luci.index
+          ./scripts/feeds install -p luci luci-app-bird
+          test -f package/feeds/luci/luci-app-bird/Makefile
+          printf '%s\n' 'CONFIG_PACKAGE_luci-app-bird=m' 'CONFIG_PACKAGE_luci-i18n-bird-zh-cn=m' >> .config
+          make defconfig
+          make -j2 package/feeds/luci/luci-app-bird/compile V=s
+          pkg=$(find bin -type f -name 'luci-app-bird-*.apk' -print -quit)
+          test -n "$pkg"
+          mkdir -p "$RUNNER_TEMP/bird-artifacts"
+          lang=$(find bin -type f -name 'luci-i18n-bird-zh-cn-*.apk' -print -quit)
+          test -n "$lang"
+          cp "$pkg" "$lang" "$RUNNER_TEMP/bird-artifacts/"
+          staging_dir/host/bin/apk adbdump "$pkg" | awk 'NR <= 35'
+      - uses: actions/upload-artifact@v4
+        if: env.SDK_ARTIFACT_RUN == ''
+        with:
+          name: bird2-sdk-apk
+          path: ${{ runner.temp }}/bird-artifacts/*.apk
+          if-no-files-found: error
+      - name: Retrieve APK from the successful SDK build
+        if: env.SDK_ARTIFACT_RUN != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: bird2-sdk-apk
+          path: ${{ runner.temp }}/bird-artifacts
+          run-id: ${{ env.SDK_ARTIFACT_RUN }}
+          github-token: ${{ github.token }}
+      - name: Boot official OpenWrt and test a clean APK installation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          base=https://downloads.openwrt.org/releases/25.12.6/targets/x86/64
+          image=openwrt-25.12.6-x86-64-generic-ext4-combined.img.gz
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 --output "$image" "$base/$image"
+          printf '%s  %s\n' f8538784d0288b4133a99ac2a68443e4922ffde6343e80df56a5882364b9d499 "$image" | sha256sum -c -
+          gzip -d "$image"
+          /usr/bin/python3 "$GITHUB_WORKSPACE/.github/scripts/bird2-clean-install.py" "${image%.gz}" "$RUNNER_TEMP"/bird-artifacts/luci-app-bird-*.apk "$RUNNER_TEMP"/bird-artifacts/luci-i18n-bird-zh-cn-*.apk
